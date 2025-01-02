@@ -29,7 +29,7 @@ export class PhoenixOperationService {
     //     this.sendSignal(`Tendência de VENDA para ${'EUR/USD'}`);
     // }
 
-    @Cron('*/5 * * * * *')
+    // @Cron('*/5 * * * * *')
     async findPairs() {
         await this.fetchHtmlData(this.url);
     }
