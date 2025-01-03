@@ -29,7 +29,7 @@ export class PhoenixOperationService {
     //     this.sendSignal(`Tendência de VENDA para ${'EUR/USD'}`);
     // }
 
-    // @Cron('*/5 * * * * *')
+    @Cron('*/10 * * * * *')
     async findPairs() {
         await this.fetchHtmlData(this.url);
     }
@@ -113,7 +113,13 @@ export class PhoenixOperationService {
             const signalModerado = this.processarModerado();
             const signalConservador = this.processarConservador();
 
-            this.sendSignal(`{ agressivo: ${signalAgressivo}, moderado: ${signalModerado}, conservador: ${signalConservador}}`)
+            this.sendSignal(
+                {
+                    agressivo: signalAgressivo,
+                    moderado: signalModerado,
+                    conservador: signalConservador
+                }
+            )
         }
 
     }
@@ -372,9 +378,11 @@ export class PhoenixOperationService {
         return ema;
     }
 
-    sendSignal(signal: string) {
-        const message = { text: signal, timestamp: new Date() };
-        this.appGateway.sendMessage('signals', message);
+    sendSignal(signal: any) {
+        if (signal.agressivo || signal.moderado || signal.conservador) {
+            const message = { signal: signal, timestamp: new Date() };
+            this.appGateway.sendMessage('signals', message);
+        }
     }
 
 
