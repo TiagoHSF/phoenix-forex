@@ -5,6 +5,14 @@ import { lastValueFrom } from 'rxjs';
 import * as cheerio from 'cheerio';
 import { PairDTO } from './dtos/pair-dto';
 import { AppGateway } from 'src/app.gateway';
+import { CalculoTendenciaService } from './verificacao-probabilidade/calculo-tendencia.service';
+import { CalculoBandasBollingerService } from './verificacao-probabilidade/calculo-bandas-bollinger.service';
+import { CalculoEMAService } from './verificacao-probabilidade/calculo-ema.service';
+import { CalculoMACDService } from './verificacao-probabilidade/calculo-macd.service';
+import { CalculoRSIService } from './verificacao-probabilidade/calculo-rsi.service';
+import { WebSocket } from 'ws';
+
+
 
 @Injectable()
 export class PhoenixOperationService {
@@ -19,26 +27,61 @@ export class PhoenixOperationService {
     //USDCAD
     //USDJPY
 
-    constructor(private readonly httpService: HttpService,
-        private readonly appGateway: AppGateway) {
-
+    constructor(
+        private readonly httpService: HttpService,
+        private readonly appGateway: AppGateway,
+        private readonly calculoBandasBollingerService: CalculoBandasBollingerService,
+        private readonly calculoEmaService: CalculoEMAService,
+        private readonly calculoMacdService: CalculoMACDService,
+        private readonly calculoRsiService: CalculoRSIService,
+        private readonly calculoTendenciaService: CalculoTendenciaService
+    ) {
+        
     }
 
-    //  @Cron('*/10 * * * * *')
-    // async teste(){
-    //     this.sendSignal(`Tendência de VENDA para ${'EUR/USD'}`);
-    // }
 
-    @Cron('*/10 * * * * *')
-    async findPairs() {
-        await this.fetchHtmlData(this.url);
+
+    // @Cron('*/10 * * * * *')
+    async teste() {
+        const response = await lastValueFrom(
+            this.httpService.get(`https://trade.avalonbroker.io/traderoom?nocache=${new Date().getTime()}`, {
+                headers: {
+                    'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
+                    Pragma: 'no-cache',
+                    Expires: '0',
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+                },
+
+            }),
+        );
+        const html = response.data;
+
+        const $ = cheerio.load(html);
+
+        $('tr').each((rowIndex, rowElement) => {
+            const columns: string[] = [];
+            $(rowElement)
+                .find('td, th')
+                .each((colIndex, colElement) => {
+                    columns.push($(colElement).text().trim());
+                });
+            if (columns[1].includes("EUR/USD")) {
+                this.pairsData.push(this.buildPair(columns));
+            }
+            if (columns[0].includes("USDCAD")) {
+                if (!columns[2].includes("%")) {
+                    this.pairsData.push(this.buildPair2(columns));
+                }
+            }
+        });
     }
 
-    async fetchHtmlData(url: string): Promise<any> {
+    @Cron('*/30 * * * * *')
+    async processarBuscaMercadoForex(url: string): Promise<any> {
         try {
 
             const response = await lastValueFrom(
-                this.httpService.get(`${url}?nocache=${new Date().getTime()}`, {
+                this.httpService.get(`${this.url}?nocache=${new Date().getTime()}`, {
                     headers: {
                         'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
                         Pragma: 'no-cache',
@@ -52,7 +95,6 @@ export class PhoenixOperationService {
 
             const $ = cheerio.load(html);
 
-
             $('tr').each((rowIndex, rowElement) => {
                 const columns: string[] = [];
                 $(rowElement)
@@ -63,16 +105,14 @@ export class PhoenixOperationService {
                 if (columns[1].includes("EUR/USD")) {
                     this.pairsData.push(this.buildPair(columns));
                 }
-                if (columns[0].includes("EURUSD")) {
+                if (columns[0].includes("USDCAD")) {
                     if (!columns[2].includes("%")) {
                         this.pairsData.push(this.buildPair2(columns));
                     }
                 }
             });
 
-            console.log("Nova Busca");
-
-            this.callPutChance();
+            this.determinarEntradas();
         } catch (error) {
             console.error('Erro ao buscar HTML:', error);
             throw new Error('Não foi possível buscar os dados do site.');
@@ -96,7 +136,7 @@ export class PhoenixOperationService {
 
     buildPair2(tableItem: string[]) {
         try {
-
+            console.log(tableItem[2])
             return {
                 pair: tableItem[0],
                 bid: tableItem[2],
@@ -107,7 +147,56 @@ export class PhoenixOperationService {
         }
     }
 
-    async callPutChance() {
+    // async determinarEntradas() {
+    //     try {
+    //         let signalAgressivo;
+    //         let signalModerado;
+    //         let signalConservador;
+
+    //         if (this.pairsData.length > 5) {
+    //             const bandasBollinger = this.calculoBandasBollingerService.calcular(this.pairsData);
+    //             // const ema = this.calculoEmaService.calcular(12, this.pairsData);
+    //             const macd = this.calculoMacdService.calcular(this.pairsData);
+    //             const rsi = this.calculoRsiService.calcular(this.pairsData);
+    //             const tendencia = this.calculoTendenciaService.calcular(10, 10, this.pairsData);
+
+    //             // RETORNO AGRESSIVO
+    //             if (tendencia === "Alta" && macd === "Sinal de Venda") {
+    //                 signalAgressivo = `Tendência de VENDA para ${'EUR/USD'}`;
+    //             }
+    //             if (tendencia === "Baixa" && macd === "Sinal de Compra") {
+    //                 signalAgressivo = `Tendência de COMPRA para ${'EUR/USD'}`;
+    //             }
+
+    //             // RETORNO MODERADO
+    //             if (tendencia === "Alta" && rsi > 70 && macd === "Sinal de Venda") {
+    //                 signalModerado = `Tendência de VENDA para ${'EUR/USD'}`;
+    //             }
+    //             if (tendencia === "Baixa" && rsi < 30 && macd === "Sinal de Compra") {
+    //                 signalModerado = `Tendência de COMPRA para ${'EUR/USD'}`;
+    //             }
+
+    //             // RETORNO CONSERVADOR
+    //             if (tendencia === "Alta" && rsi > 70 && bandasBollinger === "Sobrecompra" && macd === "Sinal de Venda") {
+    //                 signalConservador = `Tendência de VENDA para ${'EUR/USD'}`;
+    //             }
+    //             if (tendencia === "Baixa" && rsi < 30 && bandasBollinger === "Sobrevenda" && macd === "Sinal de Compra") {
+    //                 signalConservador = `Tendência de COMPRA para ${'EUR/USD'}`;
+    //             }
+
+    //             // Enviar os sinais
+    //             this.sendSignal({
+    //                 agressivo: signalAgressivo,
+    //                 moderado: signalModerado,
+    //                 conservador: signalConservador
+    //             });
+    //         }
+    //     } catch (error) {
+    //         throw error;
+    //     }
+    // }
+
+    async determinarEntradas() {
         if (this.pairsData.length > 5) {
             const signalAgressivo = this.processarAgressivo();
             const signalModerado = this.processarModerado();
@@ -121,9 +210,9 @@ export class PhoenixOperationService {
                 }
             )
         }
-
     }
 
+    //ANTIGO
     private processarAgressivo() {
         const tendenciaAtual = this.calcularTendenciaAtual();
         const tendenciaAnterior = this.calcularTendenciaAnterior();
@@ -157,6 +246,7 @@ export class PhoenixOperationService {
         }
     }
 
+    //ANTIGO
     private processarModerado() {
         const tendenciaAtual = this.calcularTendenciaAtual();
         const tendenciaAnterior = this.calcularTendenciaAnterior();
@@ -190,6 +280,7 @@ export class PhoenixOperationService {
         }
     }
 
+    //ANTIGO
     private processarConservador() {
         const tendenciaAtual = this.calcularTendenciaAtual();
         const tendenciaAnterior = this.calcularTendenciaAnterior();
@@ -223,6 +314,7 @@ export class PhoenixOperationService {
         }
     }
 
+    //ANTIGO
     private calcularTendenciaAtual(): "Alta" | "Baixa" | "Neutra" {
         // Calcular a média móvel simples (SMA) para o período desejado
         const periodoSMA = 5; // Número de períodos para a média móvel simples
