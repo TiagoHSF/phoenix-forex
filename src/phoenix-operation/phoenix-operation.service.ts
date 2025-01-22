@@ -36,9 +36,13 @@ export class PhoenixOperationService {
         private readonly calculoRsiService: CalculoRSIService,
         private readonly calculoTendenciaService: CalculoTendenciaService
     ) {
-        
+
     }
 
+    @Cron('*/10 * * * * *')
+    async ping() {
+        console.log("Ping - Phoenix Forex Operando..")
+    }
 
 
     // @Cron('*/10 * * * * *')
@@ -76,7 +80,7 @@ export class PhoenixOperationService {
         });
     }
 
-    @Cron('*/30 * * * * *')
+    // @Cron('*/30 * * * * *')
     async processarBuscaMercadoForex(url: string): Promise<any> {
         try {
 
