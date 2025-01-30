@@ -45,39 +45,17 @@ export class PhoenixOperationService {
     }
 
 
-    // @Cron('*/10 * * * * *')
+
+
+    @Cron('*/50 * * * * *')
     async teste() {
-        const response = await lastValueFrom(
-            this.httpService.get(`https://trade.avalonbroker.io/traderoom?nocache=${new Date().getTime()}`, {
-                headers: {
-                    'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
-                    Pragma: 'no-cache',
-                    Expires: '0',
-                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-                },
+        this.sendSignal(
+            {
+                agressivo: `Tendência de VENDA para ${'EUR/USD'}`
 
-            }),
-        );
-        const html = response.data;
 
-        const $ = cheerio.load(html);
-
-        $('tr').each((rowIndex, rowElement) => {
-            const columns: string[] = [];
-            $(rowElement)
-                .find('td, th')
-                .each((colIndex, colElement) => {
-                    columns.push($(colElement).text().trim());
-                });
-            if (columns[1].includes("EUR/USD")) {
-                this.pairsData.push(this.buildPair(columns));
             }
-            if (columns[0].includes("USDCAD")) {
-                if (!columns[2].includes("%")) {
-                    this.pairsData.push(this.buildPair2(columns));
-                }
-            }
-        });
+        )
     }
 
     // @Cron('*/30 * * * * *')
